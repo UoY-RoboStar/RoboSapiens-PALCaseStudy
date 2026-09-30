@@ -1,0 +1,32 @@
+--# -path=.:../../../experiments/pal-presentation-traces/roboworld-validation/gf-rgl/src/abstract:../../../experiments/pal-presentation-traces/roboworld-validation/gf-rgl/src/english:../../../experiments/pal-presentation-traces/roboworld-validation/gf-rgl/src/common:../../../experiments/pal-presentation-traces/roboworld-validation/gf-rgl/src/api:../../../experiments/pal-presentation-traces/roboworld-validation/gf-rgl/src/prelude
+concrete PAL_NavigationEng of PAL_Navigation = RoboWorldEng **
+open MorphoEng, ResEng, ParadigmsEng, IrregEng, Prelude in {
+  lin _av_A = mkA "av" "IRREG";
+  lin _lv_A = mkA "lv" "IRREG";
+  lin _logical_A = mkA "logical";
+  lin _stationary_A = mkA "stationary";
+  lin _cylindrical_A = mkA "cylindrical";
+  lin _constant_A = mkA "constant";
+  lin _base_N = mkN "base";
+  lin _roll_N = mkN "roll";
+  lin _pitch_N = mkN "pitch";
+  lin _measurement_N = mkN "measurement";
+  lin _period_N = mkN "period";
+  lin _reading_N = mkN "reading";
+  lin _wall_N = mkN "wall" "walls";
+  lin _yaw_N = mkN "yaw" "yaws";
+  lin _radius_N = mkN "radius" "radii";
+  lin _box1_N = mkN "box1" "box1s";
+  lin _box2_N = mkN "box2" "box2s";
+  lin _cylinder1_N = mkN "cylinder1" "cylinder1s";
+  lin _cylinder2_N = mkN "cylinder2" "cylinder2s";
+  lin _south_wall_N = mkN "south_wall" "south_walls";
+  lin _west_wall_N = mkN "west_wall" "west_walls";
+  lin _north_wall_N = mkN "north_wall" "north_walls";
+  lin _east_wall_N = mkN "east_wall" "east_walls";
+  lin _mission_N = mkN "mission";
+  lin _target_N = mkN "target";
+  lin _angle_N = mkN "angle";
+  lin _bearing_N = mkN "bearing";
+  lin _rad_Unit = mkN "rad" "rad";
+}
