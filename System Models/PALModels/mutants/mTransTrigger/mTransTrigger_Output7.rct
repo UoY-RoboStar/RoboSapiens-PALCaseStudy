@@ -1,0 +1,331 @@
+package pal_navigation interface mTransTrigger_Output7_NavigationInputs {
+	event globalpose : GlobalPose
+}
+
+interface mTransTrigger_Output7_MissionEvents {
+	event setTarget : TargetPosition
+	event targetReached
+}
+
+interface mTransTrigger_Output7_NavigationCommands {
+	event proposal : NavigationProposal
+	event OAApplied
+}
+
+interface mTransTrigger_Output7_NavigationObstacleEvents {
+	event closestAngle : real
+	event closestDistance : real
+}
+
+interface mTransTrigger_Output7_NavigationMove {
+	mTransTrigger_Output7_move ( av : real , lv : real )
+}
+
+datatype TargetPosition { x : real y : real } datatype GlobalPose { x : real y : real heading : real } datatype NavigationProposal { angular : real linear : real turning : boolean reached : boolean } stm mTransTrigger_Output7_Mission {
+	uses mTransTrigger_Output7_MissionEvents const missionTargetX : real = - 2.56
+	const missionTargetY : real = 1.0
+	var missionTarget : TargetPosition
+	initial i0
+	state SendTarget {
+		entry missionTarget . x = missionTargetX ; missionTarget . y = missionTargetY ; setTarget ! missionTarget
+	}
+	state WaitArrival {
+	}
+	final f0
+	transition initialise {
+		from i0
+		to SendTarget
+	}
+	transition sent {
+		from SendTarget
+		to WaitArrival
+	}
+	transition arrived {
+		from WaitArrival
+		to f0
+		trigger targetReached
+	}
+}
+
+stm mTransTrigger_Output7_Navigation {
+	uses mTransTrigger_Output7_NavigationInputs uses mTransTrigger_Output7_MissionEvents uses mTransTrigger_Output7_NavigationCommands const arrivalRadius : real = 0.15
+	const cruiseLinear : real = 0.6
+	const turnAngular : real = 0.7
+	const linearGain : real = 1.0
+	const headingGain : real = 2.0
+	const headingSlope : real = 0.1
+	var target : TargetPosition
+	var pose : GlobalPose
+	var proposed : NavigationProposal
+	var dx : real = 0.0
+	var dy : real = 0.0
+	var distanceSquared : real = 0.0
+	var forward : real = 0.0
+	var left : real = 0.0
+	initial i0
+	state WaitTarget {
+	}
+	state WaitForPose {
+	}
+	state ComputeProposal {
+		initial iCompute
+		junction CheckArrival
+		junction SelectHeading
+		junction SelectSpeed
+		final Computed
+		transition beginComputation {
+			from iCompute
+			to CheckArrival
+		}
+		transition reachedTarget {
+			from CheckArrival
+			to Computed
+			condition distanceSquared <= arrivalRadius * arrivalRadius
+			action proposed . angular = 0.0 ; proposed . linear = 0.0 ; proposed . turning = false ; proposed . reached = true
+		}
+		transition approachTarget {
+			from CheckArrival
+			to SelectHeading
+			condition distanceSquared > arrivalRadius * arrivalRadius
+			action proposed . reached = false
+		}
+		transition turnLeft {
+			from SelectHeading
+			to Computed
+			condition ( forward <= 0.0 /\ left >= 0.0 ) \/ ( forward > 0.0 /\ left > headingSlope * forward )
+			action proposed . angular = turnAngular ; proposed . linear = 0.0 ; proposed . turning = true
+		}
+		transition turnRight {
+			from SelectHeading
+			to Computed
+			condition ( forward <= 0.0 /\ left < 0.0 ) \/ ( forward > 0.0 /\ left < - headingSlope * forward )
+			action proposed . angular = - turnAngular ; proposed . linear = 0.0 ; proposed . turning = true
+		}
+		transition aligned {
+			from SelectHeading
+			to SelectSpeed
+			condition forward > 0.0 /\ left >= - headingSlope * forward /\ left <= headingSlope * forward
+			action proposed . angular = headingGain * left / forward ; proposed . turning = false
+		}
+		transition cruise {
+			from SelectSpeed
+			to Computed
+			trigger OAApplied
+			condition linearGain * forward >= cruiseLinear
+			action proposed . linear = cruiseLinear
+		}
+		transition slowForTarget {
+			from SelectSpeed
+			to Computed
+			condition linearGain * forward < cruiseLinear
+			action proposed . linear = linearGain * forward
+		}
+		entry dx = target . x - pose . x ; dy = target . y - pose . y ; distanceSquared = dx * dx + dy * dy ; forward = dx * cos ( pose . heading ) + dy * sin ( pose . heading ) ; left = - dx * sin ( pose . heading ) + dy * cos ( pose . heading )
+	}
+	state SendProposal {
+		entry proposal ! proposed
+	}
+	state WaitApplied {
+	}
+	junction CheckCompletion
+	state Arrived {
+		entry targetReached
+	}
+	final f0
+	transition finish {
+		from Arrived
+		to f0
+	}
+	transition initialise {
+		from i0
+		to WaitTarget
+	}
+	transition mission {
+		from WaitTarget
+		to WaitForPose
+		trigger setTarget ? target
+	}
+	transition position {
+		from WaitForPose
+		to ComputeProposal
+		trigger globalpose ? pose
+	}
+	transition computed {
+		from ComputeProposal
+		to SendProposal
+	}
+	transition sent {
+		from SendProposal
+		to WaitApplied
+	}
+	transition acknowledged {
+		from WaitApplied
+		to CheckCompletion
+		trigger OAApplied
+	}
+	transition missionComplete {
+		from CheckCompletion
+		to Arrived
+		condition proposed . reached
+	}
+	transition continueMission {
+		from CheckCompletion
+		to WaitForPose
+		condition not proposed . reached
+	}
+}
+
+stm mTransTrigger_Output7_Avoidance {
+	uses mTransTrigger_Output7_NavigationCommands uses mTransTrigger_Output7_NavigationObstacleEvents requires mTransTrigger_Output7_NavigationMove const pi : real = 3.14159
+	const min_range : real = 0.2
+	const max_range : real = 1.0
+	var requested : NavigationProposal
+	var closest_angle : real = 0.0
+	var closest_distance : real = 0.0
+	var current_speed : real = 0.0
+	var av : real = 0.0
+	var lv : real = 0.0
+	var OA_done : boolean = false
+	initial i0
+	state Initialise {
+		entry mTransTrigger_Output7_move ( 0.0 , 0.0 )
+	}
+	state WaitProposal {
+	}
+	junction CheckArrival
+	state DetermineObstacle {
+		initial iCompute
+		state SampleAngle {
+		}
+		state SampleDistance {
+		}
+		junction SelectCommand
+		junction TurnAway
+		junction SlowDown
+		junction CloseAhead
+		final Computed
+		transition beginComputation {
+			from iCompute
+			to SampleAngle
+		}
+		transition angle {
+			from SampleAngle
+			to SampleDistance
+			trigger closestAngle ? closest_angle
+		}
+		transition distance {
+			from SampleDistance
+			to SelectCommand
+			trigger closestDistance ? closest_distance
+		}
+		transition obstacleAhead {
+			from SelectCommand
+			to TurnAway
+			condition closest_distance >= min_range /\ closest_distance < max_range /\ closest_angle >= - 90.0 /\ closest_angle <= 90.0
+			action current_speed = requested . linear
+		}
+		transition turnFromLeft {
+			from TurnAway
+			to SlowDown
+			condition closest_angle > 0.0
+			action av = ( closest_angle - 100.0 ) * pi / 180.0
+		}
+		transition turnFromRight {
+			from TurnAway
+			to SlowDown
+			condition closest_angle <= 0.0
+			action av = ( closest_angle + 100.0 ) * pi / 180.0
+		}
+		transition nearObstacle {
+			from SlowDown
+			to CloseAhead
+			condition closest_distance <= 0.4
+			action lv = 0.0
+		}
+		transition farObstacle {
+			from SlowDown
+			to CloseAhead
+			condition closest_distance > 0.4
+			action lv = current_speed / 2.0
+		}
+		transition reverse {
+			from CloseAhead
+			to Computed
+			condition closest_distance < 0.4 /\ closest_angle > - 30.0 /\ closest_angle < 30.0
+			action lv = - 0.4 ; OA_done = true
+		}
+		transition keepAvoidance {
+			from CloseAhead
+			to Computed
+			condition closest_distance >= 0.4 \/ closest_angle <= - 30.0 \/ closest_angle >= 30.0
+			action OA_done = true
+		}
+		transition navigate {
+			from SelectCommand
+			to Computed
+			condition closest_distance < min_range \/ closest_distance >= max_range \/ closest_angle < - 90.0 \/ closest_angle > 90.0
+			action av = requested . angular ; lv = requested . linear ; OA_done = true
+		}
+		entry OA_done = false
+	}
+	state Arrived {
+		entry mTransTrigger_Output7_move ( 0.0 , 0.0 ) ; OAApplied
+	}
+	final f0
+	transition initialise {
+		from i0
+		to Initialise
+	}
+	transition ready {
+		from Initialise
+		to WaitProposal
+	}
+	transition navigationCommand {
+		from WaitProposal
+		to CheckArrival
+		trigger proposal ? requested
+	}
+	transition stopAtTarget {
+		from CheckArrival
+		to Arrived
+		condition requested . reached
+	}
+	transition sampleObstacle {
+		from CheckArrival
+		to DetermineObstacle
+		condition not requested . reached
+	}
+	transition commanded {
+		from DetermineObstacle
+		to WaitProposal
+		condition OA_done
+		action mTransTrigger_Output7_move ( av , lv ) ; OAApplied
+	}
+	transition t0 {
+		from Arrived
+		to f0
+	}
+}
+
+function sin ( x : real ) : real { } function cos ( x : real ) : real { } module mTransTrigger_Output7_PAL_Navigation {
+	connection PAL_NavigationBase on globalpose to PAL_NavigationController on globalpose ( _async )
+	connection PAL_NavigationBase on closestAngle to PAL_NavigationController on closestAngle ( _async )
+	connection PAL_NavigationBase on closestDistance to PAL_NavigationController on closestDistance ( _async )
+	robotic platform PAL_NavigationBase {
+		uses mTransTrigger_Output7_NavigationInputs uses mTransTrigger_Output7_NavigationObstacleEvents provides mTransTrigger_Output7_NavigationMove }
+
+	controller PAL_NavigationController {
+		uses mTransTrigger_Output7_NavigationInputs uses mTransTrigger_Output7_NavigationObstacleEvents requires mTransTrigger_Output7_NavigationMove sref mission = mTransTrigger_Output7_Mission
+		sref navigation = mTransTrigger_Output7_Navigation
+		sref avoidance = mTransTrigger_Output7_Avoidance
+		connection mission on setTarget to navigation on setTarget
+		connection navigation on targetReached to mission on targetReached
+		connection PAL_NavigationController on globalpose to navigation on globalpose
+		connection PAL_NavigationController on closestAngle to avoidance on closestAngle
+		connection PAL_NavigationController on closestDistance to avoidance on closestDistance
+		connection navigation on proposal to avoidance on proposal
+		connection avoidance on OAApplied to navigation on OAApplied
+	}
+
+}
+
